@@ -1,0 +1,130 @@
+
+📄 COMANDOS Y ARCHIVOS DE CONFIGURACIÓN – LDAP y SAMBA
+
+🔹 COMANDOS – PARTE 1: LDAP (Configuración básica)
+---------------------------------------------------
+sudo apt update && sudo apt upgrade
+sudo apt-get install slapd ldap-utils
+sudo dpkg-reconfigure slapd
+slapcat
+mkdir ldap_practica
+sudo chmod 777 ldap_practica/
+sudo chown isard:isard ldap_practica/
+slappasswd
+sudo ldapadd -x -D "cn=admin,dc=iesmendoza,dc=local" -W -f estructura.ldif
+sudo apt-get install phpldapadmin
+wget https://github.com/... -O phpldapadmin-1.2.6.7.tar.gz
+# Extraer, reemplazar y copiar configuraciones
+# Modificar /etc/phpldapadmin/config.php
+# Reiniciar Apache
+# Modificar atributos desde phpLDAPadmin (ej: cambiar sn de alumno1 a Martínez)
+
+🔹 COMANDOS – PARTE 2: SAMBA con LDAP
+--------------------------------------
+sudo apt install samba smbldap-tools libnss-ldap libpam-ldap
+# Editar /etc/nsswitch.conf → añadir ldap a passwd, group, shadow
+# Editar /etc/pam.d/common-session → añadir pam_mkhomedir.so
+
+sudo apt install samba-doc
+sudo mkdir /tmp/ldap-schema
+# Crear archivo temp.conf
+sudo slaptest -f temp.conf -F /tmp/ldap-schema
+ldapadd -Y EXTERNAL -H ldapi:/// -f /tmp/ldap-schema/cn=config/cn=schema/samba.ldif
+slapcat
+
+# smb.conf y creación del recurso
+sudo systemctl restart smbd nmbd
+testparm
+smbpasswd -W
+mkdir /srv/samba/ktm
+chmod 777 /srv/samba/ktm
+
+# smbldap-tools
+cat samba.ldif >> nuevo_samba.ldif
+smbldap-useradd profesor1
+
+# Crear archivos de configuración necesarios
+# /etc/smbldap-tools/smbldap.conf
+# /etc/smbldap-tools/smbldap_bind.conf
+
+# Cargar atributos al usuario desde archivo .ldif
+sudo apt install smbclient
+
+🔹 ARCHIVOS DE CONFIGURACIÓN
+-----------------------------
+
+🗂️ /etc/nsswitch.conf
+-----------------------
+passwd:     files ldap
+group:      files ldap
+shadow:     files ldap
+
+🗂️ /etc/pam.d/common-session
+------------------------------
+session required        pam_mkhomedir.so skel=/etc/skel umask=0022
+
+🗂️ temp.conf
+--------------
+include         /etc/ldap/schema/core.schema
+include         /etc/ldap/schema/cosine.schema
+include         /etc/ldap/schema/nis.schema
+include         /etc/ldap/schema/inetorgperson.schema
+include         /etc/ldap/schema/samba.schema
+
+pidfile         /tmp/ldap-schema/slapd.pid
+argsfile        /tmp/ldap-schema/slapd.args
+modulepath      /usr/lib/ldap
+moduleload      back_hdb
+
+database        hdb
+suffix          "dc=example,dc=com"
+directory       "/tmp/ldap-schema"
+
+🗂️ smb.conf
+------------
+[global]
+   workgroup = ITALOMOTOR
+   netbios name = SERVIDOR
+   server string = Servidor de archivos
+   security = user
+   passdb backend = ldapsam:ldap://localhost/
+   ldap suffix = dc=italomotor,dc=local
+   ldap admin dn = cn=admin,dc=italomotor,dc=local
+   ldap group suffix = ou=groups
+   ldap user suffix = ou=users
+   ldap machine suffix = ou=machines
+   ldap idmap suffix = ou=idmap
+   ldap ssl = no
+
+[ktm]
+   path = /srv/samba/ktm
+   writable = yes
+   browseable = yes
+   guest ok = no
+
+🗂️ domain.ldif
+----------------
+dn: sambaDomainName=ITALOMOTOR,dc=italomotor,dc=local
+objectClass: sambaDomain
+sambaDomainName: ITALOMOTOR
+sambaSID: S-1-5-21-1234567890-1234567890-1234567890
+sambaAlgorithmicRidBase: 1000
+
+🗂️ /etc/smbldap-tools/smbldap.conf
+-----------------------------------
+SID="S-1-5-21-1234567890-1234567890-1234567890"
+slaveLDAP="ldap://127.0.0.1/"
+slavePort="389"
+masterLDAP="ldap://127.0.0.1/"
+masterPort="389"
+ldapTLS="0"
+suffix="dc=italomotor,dc=local"
+usersdn="ou=users,${suffix}"
+computersdn="ou=machines,${suffix}"
+groupsdn="ou=groups,${suffix}"
+idmapdn="ou=idmap,${suffix}"
+
+🗂️ /etc/smbldap-tools/smbldap_bind.conf
+----------------------------------------
+binddn="cn=admin,dc=italomotor,dc=local"
+bindpw=admin
